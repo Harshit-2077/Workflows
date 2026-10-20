@@ -1,0 +1,153 @@
+
+name: Poco F6 Kernel Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "patches/**"
+      - ".github/workflows/build-kernel.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: poco-f6-kernel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    env:
+      KERNEL_REPO: https://github.com/LineageOS/android_kernel_xiaomi_sm8635.git
+      MODULES_REPO: https://github.com/peridot-dev/android_kernel_xiaomi_sm8635-modules.git
+      BRANCH: lineage-23.2
+      ARCH: arm64
+      OUT: ${{ github.workspace }}/kernel-out
+
+    steps:
+      - name: Checkout workflow and patch
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git make bc bison flex build-essential \
+            libssl-dev libelf-dev libncurses-dev \
+            dwarves python3 python-is-python3 \
+            cpio rsync unzip zip \
+            clang llvm lld \
+            gcc-aarch64-linux-gnu \
+            binutils-aarch64-linux-gnu
+
+      - name: Clone kernel source
+        run: |
+          git clone --depth=1 \
+            -b "$BRANCH" "$KERNEL_REPO" kernel
+
+      - name: Clone external modules
+        run: |
+          git clone --depth=1 \
+            -b "$BRANCH" "$MODULES_REPO" modules
+
+      - name: Record source revisions
+        run: |
+          {
+            echo "Kernel:"
+            git -C kernel rev-parse HEAD
+            echo "Modules:"
+            git -C modules rev-parse HEAD
+          } | tee source-revisions.txt
+
+      - name: Check and apply monitor injection patch
+        run: |
+          set -euxo pipefail
+
+          PATCH="$GITHUB_WORKSPACE/patches/0001-poco-f6-sm8635-monitor-injection.patch"
+
+          test -s "$PATCH"
+
+          cd modules
+          git apply --check "$PATCH"
+          git apply --stat "$PATCH"
+          git apply "$PATCH"
+
+          git diff --check
+          git diff --stat
+
+      - name: Configure kernel
+        run: |
+          set -euxo pipefail
+
+          cd kernel
+          mkdir -p "$OUT"
+
+          export ARCH=arm64
+          export LLVM=1
+
+          make O="$OUT" gki_defconfig
+
+          scripts/kconfig/merge_config.sh \
+            -m -O "$OUT" \
+            "$OUT/.config" \
+            arch/arm64/configs/vendor/pineapple_GKI.config \
+            arch/arm64/configs/vendor/peridot_GKI.config
+
+          make O="$OUT" olddefconfig
+
+          cp "$OUT/.config" "$GITHUB_WORKSPACE/kernel-config.txt"
+
+      - name: Build kernel image and in-tree modules
+        run: |
+          set -euxo pipefail
+
+          cd kernel
+
+          export ARCH=arm64
+          export LLVM=1
+          export LLVM_IAS=1
+          export KBUILD_BUILD_USER=github-actions
+          export KBUILD_BUILD_HOST=ubuntu
+
+          JOBS=$(nproc)
+
+          make -j"$JOBS" O="$OUT" Image modules dtbs
+
+      - name: Collect kernel artifacts
+        if: always()
+        run: |
+          mkdir -p artifacts
+
+          if [ -f "$OUT/arch/arm64/boot/Image" ]; then
+            cp "$OUT/arch/arm64/boot/Image" artifacts/
+          fi
+
+          if [ -d "$OUT/arch/arm64/boot/dts" ]; then
+            tar -czf artifacts/dtbs.tar.gz \
+              -C "$OUT/arch/arm64/boot" dts
+          fi
+
+          if [ -f "$OUT/.config" ]; then
+            cp "$OUT/.config" artifacts/kernel.config
+          fi
+
+          cp source-revisions.txt artifacts/ 2>/dev/null || true
+          cp kernel-config.txt artifacts/ 2>/dev/null || true
+
+          git -C modules diff \
+            > artifacts/monitor-injection.patch.diff
+
+          tar -czf artifacts/patched-modules-source.tar.gz modules
+
+      - name: Upload build artifacts and patched source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: poco-f6-kernel-build
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 7
+          
