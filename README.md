@@ -23,7 +23,7 @@ Pinned inputs:
 - Enable `CONFIG_FEATURE_FRAME_INJECTION_SUPPORT` in the QCA6750 profile.
 - Adapt monitor-channel access to this driver's `mon_chan_freq` / `mon_bandwidth` fields and update them after successful cfg80211 channel changes.
 - Linearize packet-socket buffers before parsing and preserve the original MLO capability across monitor teardown.
-- Fix a host libbpf const declaration needed with the sandbox's newer libc.
+- Fix host libbpf const correctness and align extract-cert password guards with its OpenSSL/BoringSSL implementation.
 - Disable `MODULE_SIG`, `MODULE_SIG_ALL`, `MODULE_SIG_FORCE` and Android `MODULE_SIG_PROTECT`; verify both configuration and unsigned module output. Disable unused-symbol trimming so external modules can link.
 
 **The reference implements management-frame injection only.** The frame validator rejects data and control frames. Radiotap rate/retry/TX-flag fields are not a general transmit-control API. Firmware must support raw TX, the helper AP vdev and monitor RX. Queuing a packet or returning success from a socket is not proof of RF transmission.
