@@ -31,7 +31,7 @@ jobs:
       - name: Checkout workflow and patch
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -39,9 +39,23 @@ jobs:
             libssl-dev libelf-dev libncurses-dev \
             dwarves python3 python-is-python3 \
             cpio rsync unzip zip \
-            clang llvm lld \
             gcc-aarch64-linux-gnu \
-            binutils-aarch64-linux-gnu
+            binutils-aarch64-linux-gnu \
+            wget ca-certificates
+
+      - name: Install LLVM and Clang 19
+        run: |
+          set -euxo pipefail
+
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 19
+
+          sudo apt-get install -y \
+            clang-19 llvm-19 lld-19
+
+          clang-19 --version
+          ld.lld-19 --version
 
       - name: Clone kernel source
         run: |
@@ -60,21 +74,22 @@ jobs:
             git -C kernel rev-parse HEAD
             echo "Modules:"
             git -C modules rev-parse HEAD
+            echo "Compiler:"
+            clang-19 --version
           } | tee source-revisions.txt
 
-      - name: Check and apply monitor injection patch
+      - name: Check and apply injection patch
         run: |
           set -euxo pipefail
 
           PATCH="$GITHUB_WORKSPACE/patches/0001-poco-f6-sm8635-monitor-injection.patch"
-
           test -s "$PATCH"
 
           cd modules
+
           git apply --check "$PATCH"
           git apply --stat "$PATCH"
           git apply "$PATCH"
-
           git diff --check
           git diff --stat
 
@@ -86,9 +101,20 @@ jobs:
           mkdir -p "$OUT"
 
           export ARCH=arm64
-          export LLVM=1
+          export LLVM=-19
+          export LLVM_IAS=1
 
           make O="$OUT" gki_defconfig
+
+          for fragment in \
+            arch/arm64/configs/vendor/pineapple_GKI.config \
+            arch/arm64/configs/vendor/peridot_GKI.config
+          do
+            if [ ! -f "$fragment" ]; then
+              echo "Missing expected config fragment: $fragment"
+              exit 1
+            fi
+          done
 
           scripts/kconfig/merge_config.sh \
             -m -O "$OUT" \
@@ -96,58 +122,73 @@ jobs:
             arch/arm64/configs/vendor/pineapple_GKI.config \
             arch/arm64/configs/vendor/peridot_GKI.config
 
+          # Disable module signing
+          scripts/config --file "$OUT/.config" \
+            -d MODULE_SIG \
+            -d MODULE_SIG_ALL \
+            -d MODULE_SIG_FORCE
+
           make O="$OUT" olddefconfig
+
+          # Verify the resulting configuration
+          grep -E '^# CONFIG_MODULE_SIG is not set$' "$OUT/.config"
+          grep -E '^# CONFIG_MODULE_SIG_ALL is not set$' "$OUT/.config"
 
           cp "$OUT/.config" "$GITHUB_WORKSPACE/kernel-config.txt"
 
-      - name: Build kernel image and in-tree modules
+      - name: Build kernel with Clang 19
         run: |
           set -euxo pipefail
 
           cd kernel
 
           export ARCH=arm64
-          export LLVM=1
+          export SUBARCH=arm64
+          export LLVM=-19
           export LLVM_IAS=1
+          export CC=clang-19
           export KBUILD_BUILD_USER=github-actions
           export KBUILD_BUILD_HOST=ubuntu
 
-          JOBS=$(nproc)
+          clang-19 --version
 
-          make -j"$JOBS" O="$OUT" Image modules dtbs
+          make -j"$(nproc)" \
+            O="$OUT" \
+            Image modules dtbs
 
-      - name: Collect kernel artifacts
+      - name: Collect artifacts
         if: always()
         run: |
           mkdir -p artifacts
 
-          if [ -f "$OUT/arch/arm64/boot/Image" ]; then
+          [ ! -f "$OUT/arch/arm64/boot/Image" ] || \
             cp "$OUT/arch/arm64/boot/Image" artifacts/
-          fi
 
-          if [ -d "$OUT/arch/arm64/boot/dts" ]; then
-            tar -czf artifacts/dtbs.tar.gz \
-              -C "$OUT/arch/arm64/boot" dts
-          fi
+          [ ! -f "$OUT/vmlinux" ] || \
+            cp "$OUT/vmlinux" artifacts/
 
-          if [ -f "$OUT/.config" ]; then
+          [ ! -f "$OUT/Module.symvers" ] || \
+            cp "$OUT/Module.symvers" artifacts/
+
+          [ ! -f "$OUT/.config" ] || \
             cp "$OUT/.config" artifacts/kernel.config
-          fi
 
-          cp source-revisions.txt artifacts/ 2>/dev/null || true
-          cp kernel-config.txt artifacts/ 2>/dev/null || true
+          [ ! -f kernel-config.txt ] || \
+            cp kernel-config.txt artifacts/
+
+          [ ! -f source-revisions.txt ] || \
+            cp source-revisions.txt artifacts/
 
           git -C modules diff \
             > artifacts/monitor-injection.patch.diff
 
           tar -czf artifacts/patched-modules-source.tar.gz modules
 
-      - name: Upload build artifacts and patched source
+      - name: Upload artifacts and logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: poco-f6-kernel-build
+          name: poco-f6-clang19-build
           path: artifacts/
           if-no-files-found: warn
           retention-days: 7
-          
