@@ -144,9 +144,9 @@ jobs:
           cp "$OUT/.config" "$GITHUB_WORKSPACE/kernel-config.txt"
 
           # 1. Fix OpenSSL 3.0 undeclared 'key_pass' on Ubuntu 24.04 runners
-          if [[ -f "$ROOT/certs/extract-cert.c" ]]; then
-            sed -i '/static.*key_pass/d' "$ROOT/certs/extract-cert.c"
-            sed -i '1i __attribute__((unused)) static const char *key_pass;' "$ROOT/certs/extract-cert.c"
+          if [[ -f "$GITHUB_WORKSPACE/kernel/certs/extract-cert.c" ]]; then
+            sed -i '/static.*key_pass/d' "$GITHUB_WORKSPACE/kernel/certs/extract-cert.c"
+            sed -i '1i __attribute__((unused)) static const char *key_pass;' "$GITHUB_WORKSPACE/kernel/certs/extract-cert.c"
           fi
           
       - name: Build kernel with Clang 19
