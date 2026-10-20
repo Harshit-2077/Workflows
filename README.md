@@ -59,7 +59,7 @@ The kernel image and module archive are **not flashable boot/vendor_dlkm images*
 
 ## GitHub Actions
 
-Use **Actions → Poco F6 Clang 19 kernel and WLAN → Run workflow**, selecting the branch containing these files. Changes to the script, patches or workflow also trigger a build. The workflow calls the same standalone script and uploads compiled artifacts only after success; failure logs are uploaded separately. No signing key is required.
+After the workflow is merged into the default branch, use **Actions → Poco F6 Clang 19 kernel and WLAN → Run workflow**, selecting the desired branch. The initial feature-branch build starts automatically on push. Changes to the script, patches or workflow also trigger a build. The workflow calls the same standalone script and uploads compiled artifacts only after success; failure logs are uploaded separately. No signing key is required.
 
 ## Apply the patches in an existing source checkout
 
@@ -84,6 +84,26 @@ After integrating a matching kernel/module set into your ROM:
 4. Capture with `tcpdump -i mon0 -s 0 -w /data/local/tmp/monitor.pcap`. Confirm radiotap headers and frames from another transmitter, including other-BSS traffic. Repeat after changing channel and after deleting/recreating the monitor interface.
 5. On a second monitor-capable radio on the same channel, capture while sending management test frames from the phone (for example, `aireplay-ng --test mon0` against your test network). Verify the frames actually arrive and match the phone's test traffic. Check `dmesg` for `Injection TX helper ready`, setup failures and completion timeouts. Capture evidence is required for a pass.
 6. Delete `mon0`, restart normal Wi-Fi, verify association, and repeat the cycle. Check for crashes, hangs, loss of RX after injection, leaked helper vdevs and failure to restore the station.
+
+### Confirm the direct datapath on the phone
+
+The selected configuration enables `CONFIG_KPROBE_EVENTS`. If the ROM exposes tracefs and permits root tracing, the following **device-only, untested-here** diagnostic observes the direct-DP completion hook. Run it in a root shell after loading the new WLAN module:
+
+```sh
+trace_root=/sys/kernel/tracing
+was_tracing=$(cat "$trace_root/tracing_on")
+echo 'p:peridot_dp_complete qca_cld3_qca6750:wma_injection_dp_complete' >> "$trace_root/kprobe_events"
+echo 1 > "$trace_root/events/kprobes/peridot_dp_complete/enable"
+echo 1 > "$trace_root/tracing_on"
+# Send the management test frames, then inspect events:
+grep peridot_dp_complete "$trace_root/trace"
+# Remove this diagnostic and restore the prior tracing state:
+echo 0 > "$trace_root/events/kprobes/peridot_dp_complete/enable"
+echo '-:peridot_dp_complete' >> "$trace_root/kprobe_events"
+echo "$was_tracing" > "$trace_root/tracing_on"
+```
+
+Use the actual loaded module name if different. A completion-hook event confirms the DP path was reached; it does not prove successful RF transmission. Correlate it with frames seen by the independent receiver. A missing event is not conclusive if probe registration failed, tracing is unavailable, or the trace buffer wrapped.
 
 Do not mark hardware support verified until these checks pass on the target firmware. If they fail, provide the build manifest, ROM/kernel version, `iw phy`/`iw dev`, module-load errors, WLAN logs around the failure, and the two capture files.
 

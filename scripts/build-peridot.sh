@@ -81,7 +81,7 @@ IPA="$MODULES/qcom/opensource/dataipa/drivers/platform/msm"
 PLATFORM="$MODULES/qcom/opensource/wlan/platform"
 WLAN="$MODULES/qcom/opensource/wlan/qcacld-3.0"
 kmake -j"$JOBS" M="$MEM" modules
-kmake -j"$JOBS" M="$IPA" KBUILD_EXTRA_SYMBOLS="$MEM/Module.symvers" modules
+kmake -j"$JOBS" M="$IPA" KCFLAGS="-I$MEM" KBUILD_EXTRA_SYMBOLS="$MEM/Module.symvers" modules
 kmake -j"$JOBS" M="$PLATFORM" WLAN_PLATFORM_ROOT="$PLATFORM" modules
 kmake -j"$JOBS" M="$WLAN" WLAN_ROOT="$WLAN" WLAN_PROFILE=qca6750 \
     DYNAMIC_SINGLE_CHIP=qca6750 MODNAME=qca_cld3_qca6750 DEVNAME=qca6750 \
