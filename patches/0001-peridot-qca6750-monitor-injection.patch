@@ -186,18 +186,6 @@ index 04cc7e1..c7a3f6a 100644
  	if (wlan_mlme_get_monitor_mode_concurrency(psoc) ==
  						MONITOR_MODE_CONC_STA_SCAN_MON)
  		return true;
-diff --git a/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig b/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig
-index cb74e17..f79cdd3 100644
---- a/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig
-+++ b/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig
-@@ -1294,6 +1294,7 @@ CONFIG_WLAN_SPECTRAL_ENABLE := y
- CONFIG_WMI_CMD_STRINGS := y
- 
- CONFIG_FEATURE_MONITOR_MODE_SUPPORT := y
-+CONFIG_FEATURE_FRAME_INJECTION_SUPPORT := y
- 
- CONFIG_WLAN_ALLOCATE_GLOBAL_BUFFERS_DYNAMICALLY := n
- CONFIG_WLAN_FEATURE_TWT := y
 diff --git a/qcom/opensource/wlan/qcacld-3.0/configs/pineapple_gki_qca6750_defconfig b/qcom/opensource/wlan/qcacld-3.0/configs/pineapple_gki_qca6750_defconfig
 index 44ecdfe..e54651d 100644
 --- a/qcom/opensource/wlan/qcacld-3.0/configs/pineapple_gki_qca6750_defconfig

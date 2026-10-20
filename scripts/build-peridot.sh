@@ -109,6 +109,8 @@ done
 while IFS= read -r -d '' module; do
     [[ -z $(modinfo -F signer "$module") ]] || { echo "Signed module: $module" >&2; exit 1; }
 done < <(find "$STAGING" -name '*.ko' -print0)
+# Build/source links point at host directories and do not belong on the device.
+find "$STAGING/lib/modules" -type l \( -name build -o -name source \) -delete
 tar -C "$STAGING" -czf "$DIST/modules.tar.gz" lib
 {
     echo "Kernel: $KERNEL_REV"
