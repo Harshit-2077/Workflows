@@ -130,9 +130,16 @@ jobs:
 
           make O="$OUT" olddefconfig
 
-          # Verify the resulting configuration
-          grep -E '^# CONFIG_MODULE_SIG is not set$' "$OUT/.config"
-          grep -E '^# CONFIG_MODULE_SIG_ALL is not set$' "$OUT/.config"
+          # Verify module signing is disabled
+          if grep -q '^CONFIG_MODULE_SIG=y' "$OUT/.config"; then
+            echo "ERROR: Module signing is enabled"
+            exit 1
+          fi
+
+          echo "Module signing is disabled or unsupported by this kernel configuration."
+
+          grep -E 'CONFIG_MODULE_SIG|CONFIG_MODULE_SIG_ALL|CONFIG_MODULE_SIG_FORCE' \
+            "$OUT/.config" || true
 
           cp "$OUT/.config" "$GITHUB_WORKSPACE/kernel-config.txt"
 
