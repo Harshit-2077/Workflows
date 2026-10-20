@@ -91,23 +91,6 @@ index 70f9bd4..e92bd02 100644
  	eh = (qdf_ether_header_t *)qdf_nbuf_data(nbuf);
  	length = dp_tx_get_pkt_len(tx_desc);
  
-diff --git a/qcom/opensource/wlan/qca-wifi-host-cmn/dp/wifi3.0/monitor/1.0/dp_mon_filter_1.0.c b/qcom/opensource/wlan/qca-wifi-host-cmn/dp/wifi3.0/monitor/1.0/dp_mon_filter_1.0.c
-index cae8bc2..de97dd5 100644
---- a/qcom/opensource/wlan/qca-wifi-host-cmn/dp/wifi3.0/monitor/1.0/dp_mon_filter_1.0.c
-+++ b/qcom/opensource/wlan/qca-wifi-host-cmn/dp/wifi3.0/monitor/1.0/dp_mon_filter_1.0.c
-@@ -565,6 +565,12 @@ static void dp_mon_filter_set_reset_mon_dest(struct dp_pdev *pdev,
- 	if (pfilter->valid) {
- 		dp_mon_filter_set_mon_cmn(pdev, pfilter);
- 
-+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
-+		/* WCN7750 normally suppresses these FP frames to avoid duplicates. */
-+		if (hal_get_target_type(soc->hal_soc) == TARGET_TYPE_WCN7750)
-+			pfilter->tlv_filter.fp_mgmt_filter = FILTER_MGMT_ALL;
-+#endif
-+
- 		dp_mon_filter_show_filter(mon_pdev, mode, pfilter);
- 		mon_pdev->filter[mode][srng_type] = *pfilter;
- 	} else /* reset the filter */
 diff --git a/qcom/opensource/wlan/qca-wifi-host-cmn/dp/wifi3.0/monitor/dp_mon.c b/qcom/opensource/wlan/qca-wifi-host-cmn/dp/wifi3.0/monitor/dp_mon.c
 index be7fe95..48d15d5 100644
 --- a/qcom/opensource/wlan/qca-wifi-host-cmn/dp/wifi3.0/monitor/dp_mon.c

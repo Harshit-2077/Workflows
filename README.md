@@ -21,6 +21,7 @@ Pinned inputs:
 
 - Port the reference's monitor interface handling, RX filter refresh, radiotap handling, direct datapath helper, TX completion accounting, channel-change coordination and station restoration.
 - Enable `CONFIG_FEATURE_FRAME_INJECTION_SUPPORT` in the QCA6750 profile.
+- Omit the WCN7750-only RX filter override; retain QCA6750's native monitor filter setup.
 - Adapt monitor-channel access to this driver's `mon_chan_freq` / `mon_bandwidth` fields and update them after successful cfg80211 channel changes.
 - Linearize packet-socket buffers before parsing and preserve the original MLO capability across monitor teardown.
 - Fix host libbpf const correctness and align extract-cert password guards with its OpenSSL/BoringSSL implementation.
