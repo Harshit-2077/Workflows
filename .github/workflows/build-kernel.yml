@@ -65,22 +65,22 @@ jobs:
       - name: Checkout (patches + workflow)
         uses: actions/checkout@v4
 
-      - name: Free disk space
+      - name: Free disk space (background)
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          nohup sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL >/dev/null 2>&1 &
           df -h /
 
       - name: Install build dependencies + clang ${{ env.CLANG_VERSION }}
         run: |
-          sudo apt-get update
+          # add apt.llvm.org by hand and install ONLY clang/lld/llvm (llvm.sh also pulls lldb, clangd, ...)
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-$CLANG_VERSION main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update -o Acquire::Languages=none
           sudo apt-get install -y --no-install-recommends \
             bc bison flex build-essential libssl-dev libelf-dev dwarves cpio lz4 zstd \
-            kmod rsync python3 ccache git patch wget gnupg lsb-release software-properties-common \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
-          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh "$CLANG_VERSION"
-          sudo apt-get install -y llvm-"$CLANG_VERSION" lld-"$CLANG_VERSION"
+            kmod rsync python3 ccache git patch \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            clang-"$CLANG_VERSION" lld-"$CLANG_VERSION" llvm-"$CLANG_VERSION"
           echo "/usr/lib/llvm-$CLANG_VERSION/bin" >> "$GITHUB_PATH"
 
       - name: Show toolchain
@@ -198,9 +198,11 @@ jobs:
             exit 1
           fi
 
-      - name: Build kernel (Image, Image.gz, in-tree modules)
+      - name: Build kernel (Image, Image.gz)
         run: |
-          "$WORK/kmake" Image Image.gz modules 2>&1 | tee "$WORK/logs/kernel-build.log"
+          # in-tree modules are skipped on purpose: only Image + the external wlan .ko are shipped,
+          # and Module.symvers / prepared tree already come from building vmlinux
+          "$WORK/kmake" Image Image.gz 2>&1 | tee "$WORK/logs/kernel-build.log"
           ls -lh "$KERNEL_DIR"/out/arch/arm64/boot/Image*
           ccache -s || true
 
