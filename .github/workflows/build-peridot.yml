@@ -1,0 +1,101 @@
+name: Poco F6 Clang 19 kernel and WLAN
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-peridot.yml'
+      - 'scripts/build-peridot.sh'
+      - 'patches/**'
+      - 'README.md
+permissions:
+  contents: write
+
+concurrency:
+  group: peridot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout build repository
+        uses: actions/checkout@v4
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang-19 \
+            llvm-19 \
+            lld-19 \
+            build-essential \
+            bc \
+            bison \
+            flex \
+            libssl-dev \
+            libelf-dev \
+            libncurses-dev \
+            dwarves \
+            cpio \
+            rsync \
+            zip \
+            kmod \
+            git
+
+      - name: Compile kernel and WLAN
+        env:
+          JOBS: '4'
+          BUILD_ROOT: ${{ github.workspace }}/build
+        run: bash scripts/build-peridot.sh
+
+      - name: Verify build artifacts
+        if: success()
+        run: |
+          set -euo pipefail
+
+          test -s build/dist/Image
+          test -s build/dist/modules.tar.gz
+          test -s build/dist/kernel.config
+          test -s build/dist/Module.symvers
+          test -s build/dist/System.map
+          test -s build/dist/kernelrelease.txt
+          test -s build/dist/wlan-modinfo.txt
+          test -s build/dist/source-revisions.txt
+          test -s build/dist/SHA256SUMS
+          test -s build/dist/BUILD_SUCCESS
+
+          (
+            cd build/dist
+            sha256sum --check SHA256SUMS
+          )
+
+      - name: Upload compiled artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: peridot-clang19-kernel-wlan
+          path: |
+            build/dist/Image
+            build/dist/modules.tar.gz
+            build/dist/kernel.config
+            build/dist/Module.symvers
+            build/dist/System.map
+            build/dist/kernelrelease.txt
+            build/dist/wlan-modinfo.txt
+            build/dist/source-revisions.txt
+            build/dist/SHA256SUMS
+            build/dist/BUILD_SUCCESS
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: peridot-build-diagnostics
+          path: build/dist/logs/
+          if-no-files-found: warn
+          retention-days: 7
