@@ -103,26 +103,22 @@ jobs:
           git clone --depth=1 --branch "$KERNEL_BRANCH"  "$KERNEL_REPO"  "$KERNEL_DIR"
           git clone --depth=1 --branch "$MODULES_BRANCH" "$MODULES_REPO" "$MODULES_DIR"
 
-      - name: Apply patches/ to the modules repo
+      - name: Apply patches/my-fixed.patch to the modules repo
         run: |
-          shopt -s nullglob
-          patches=("$GITHUB_WORKSPACE"/patches/*.patch "$GITHUB_WORKSPACE"/patches/*.diff)
-          if [[ ${#patches[@]} -eq 0 ]]; then
-            echo "::error::No patches found in patches/ - refusing to build without the monitor/injection patch"
+          PATCH="$GITHUB_WORKSPACE/patches/my-fixed.patch"
+          if [[ ! -f "$PATCH" ]]; then
+            echo "::error::patches/my-fixed.patch not found"
             exit 1
           fi
           cd "$MODULES_DIR"
-          for p in "${patches[@]}"; do
-            echo "==> $p"
-            if git apply --check "$p" 2>/dev/null; then
-              git apply --whitespace=nowarn "$p"
-            else
-              # fall back to GNU patch (more tolerant of offsets/fuzz); dry-run first
-              patch -p1 --dry-run < "$p"
-              patch -p1 < "$p"
-            fi
-          done
-          git status --short | head -50
+          if git apply --check "$PATCH" 2>/dev/null; then
+            git apply --whitespace=nowarn "$PATCH"
+          else
+            # fall back to GNU patch (tolerates offsets/fuzz); dry-run first
+            patch -p1 --dry-run < "$PATCH"
+            patch -p1 < "$PATCH"
+          fi
+          git status --short
 
       - name: Fix OpenSSL 3.0 undeclared 'key_pass' on Ubuntu 24.04 runners
         run: |
