@@ -1,4 +1,4 @@
-# Poco F6 / Peridot: Clang 19 kernel and QCA6750 WLAN
+# Poco F6 / Peridot: Clang 19 kernel and QCA6750 WLANn
 
 This is a source port of [Loukious's monitor/injection commit](https://github.com/Loukious/vendor_qcom_opensource_wlan/commit/25875eb1a65e94fae404c6e9188c7a1fe679e0f5), targeted at the supplied **lineage-23.2** kernel/module sources. It is experimental until tested on a Poco F6 with the intended ROM and firmware. A successful build does not prove bootability, monitor reception, or over-air injection.
 
