@@ -1,4 +1,3 @@
-
 name: Poco F6 Clang 19 kernel and WLAN
 
 on:
@@ -50,7 +49,7 @@ jobs:
       - name: Compile kernel and WLAN
         env:
           JOBS: '4'
-        BUILD_ROOT: ${{ github.workspace }}/build
+          BUILD_ROOT: ${{ github.workspace }}/build
         run: bash scripts/build-peridot.sh
 
       - name: Verify build artifacts
