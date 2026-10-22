@@ -7,10 +7,9 @@ on:
       - '.github/workflows/build-peridot.yml'
       - 'scripts/build-peridot.sh'
       - 'patches/**'
-      - 'README.md'
-
+      - 'README.md
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: peridot-${{ github.ref }}
