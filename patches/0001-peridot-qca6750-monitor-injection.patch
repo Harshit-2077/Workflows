@@ -187,7 +187,7 @@ index 77b854c09e..1547d41a81 100644
  
  CONFIG_FEATURE_MONITOR_MODE_SUPPORT := y
 +CONFIG_FEATURE_FRAME_INJECTION_SUPPORT := y
- 
++
  CONFIG_WLAN_ALLOCATE_GLOBAL_BUFFERS_DYNAMICALLY := n
  CONFIG_WLAN_FEATURE_TWT := y
 diff --git a/qcom/opensource/wlan/qcacld-3.0/core/dp/txrx/ol_tx_desc.c b/qcom/opensource/wlan/qcacld-3.0/core/dp/txrx/ol_tx_desc.c
