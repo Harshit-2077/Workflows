@@ -72,7 +72,6 @@ jobs:
 
       - name: Install build dependencies + clang ${{ env.CLANG_VERSION }}
         run: |
-          # add apt.llvm.org by hand and install ONLY clang/lld/llvm (llvm.sh also pulls lldb, clangd, ...)
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
           echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-$CLANG_VERSION main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update -o Acquire::Languages=none
@@ -114,7 +113,6 @@ jobs:
           if git apply --check "$PATCH" 2>/dev/null; then
             git apply --whitespace=nowarn "$PATCH"
           else
-            # fall back to GNU patch (tolerates offsets/fuzz); dry-run first
             patch -p1 --dry-run < "$PATCH"
             patch -p1 < "$PATCH"
           fi
@@ -194,11 +192,20 @@ jobs:
             exit 1
           fi
 
-      - name: Build kernel (Image, Image.gz)
+      - name: Build kernel (Image, Image.gz) + module prep
         run: |
-          # in-tree modules are skipped on purpose: only Image + the external wlan .ko are shipped,
-          # and Module.symvers / prepared tree already come from building vmlinux
-          "$WORK/kmake" Image Image.gz 2>&1 | tee "$WORK/logs/kernel-build.log"
+          # Image/Image.gz are what you flash.
+          # modules_prepare  -> generates out/scripts/module.lds (needed by the
+          #                     external qcacld .ko link step).
+          # modules          -> runs modpost and generates out/Module.symvers so
+          #                     vmlinux symbols get proper CRCs (no "undefined
+          #                     symbol" spam, and vermagic/CRC match on device).
+          "$WORK/kmake" Image Image.gz modules_prepare modules \
+              2>&1 | tee "$WORK/logs/kernel-build.log"
+
+          test -f "$KERNEL_DIR/out/scripts/module.lds" || { echo "::error::module.lds not generated"; exit 1; }
+          test -f "$KERNEL_DIR/out/Module.symvers"     || { echo "::error::Module.symvers not generated"; exit 1; }
+
           ls -lh "$KERNEL_DIR"/out/arch/arm64/boot/Image*
           ccache -s || true
 
@@ -217,14 +224,12 @@ jobs:
           WLAN="$MODULES_DIR/qcom/opensource/wlan"
           QCACLD="$WLAN/qcacld-3.0"
 
-          # cnss2 / cnss_utils / cnss_prealloc headers live in the platform dir of the modules repo
           INC=""
           for d in $(find "$WLAN" \( -name cnss2.h -o -name cnss_utils.h -o -name cnss_prealloc.h \) -printf '%h\n' | sort -u); do
             INC="$INC -I$d"
           done
           echo "Extra include flags:$INC"
 
-          # KBUILD_MODPOST_WARN: symbols exported by cnss2.ko etc. are resolved at load time on the device
           "$WORK/kmake" M="$QCACLD" \
             WLAN_ROOT="$QCACLD" \
             WLAN_COMMON_ROOT=../qca-wifi-host-cmn \
