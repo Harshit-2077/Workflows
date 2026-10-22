@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the pinned Peridot kernel and QCA6750 WLAN dependency set with LLVM 19.
+# Build the pinned Peridot kernel and QCA6750 WLAN dependency set with LLVM 19. hmm
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 BUILD_ROOT=${BUILD_ROOT:-"$ROOT/build"}
