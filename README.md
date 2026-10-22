@@ -2,7 +2,7 @@
 
 This is a source port of [Loukious's monitor/injection commit](https://github.com/Loukious/vendor_qcom_opensource_wlan/commit/25875eb1a65e94fae404c6e9188c7a1fe679e0f5), targeted at the supplied **lineage-23.2** kernel/module sources. It is experimental until tested on a Poco F6 with the intended ROM and firmware. A successful build does not prove bootability, monitor reception, or over-air injection.
 
-## Can the original patch be applied directly??
+## Can the original patch be applied directly?
 
 No. Its paths are relative to a standalone WLAN repository, its WCN7750 profiles do not exist here, and several APIs differ. Peridot's [device configuration](https://github.com/peridot-dev/android_device_xiaomi_peridot/blob/lineage-23.2/BoardConfig.mk) uses the pineapple kernel base but selects **`.qca6750`**, not WCN7750.
 
