@@ -178,10 +178,10 @@ index 44ecdfe..e54651d 100644
  CONFIG_WLAN_FEATURE_COEX_DBAM=y
  CONFIG_CFG80211_MLD_AP_STA_CONNECT_UPSTREAM_SUPPORT=y
 +CONFIG_FEATURE_FRAME_INJECTION_SUPPORT=y
-diff --git a/qcacld-3.0/configs/default_defconfig b/qcacld-3.0/configs/default_defconfig
+diff --git a/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig b/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig
 index 77b854c09e..1547d41a81 100644
---- a/qcacld-3.0/configs/default_defconfig
-+++ b/qcacld-3.0/configs/default_defconfig
+--- a/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig
++++ b/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig
 @@ -1298,6 +1298,7 @@ CONFIG_WLAN_SPECTRAL_ENABLE := y
  CONFIG_WMI_CMD_STRINGS := y
  
