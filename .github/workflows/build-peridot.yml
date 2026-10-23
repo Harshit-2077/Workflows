@@ -7,7 +7,7 @@ on:
       - '.github/workflows/build-peridot.yml'
       - 'scripts/build-peridot.sh'
       - 'patches/**'
-      - 'README.md
+      - 'README.md'
 permissions:
   contents: write
 
