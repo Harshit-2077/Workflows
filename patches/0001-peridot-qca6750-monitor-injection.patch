@@ -180,14 +180,16 @@ index 44ecdfe..e54651d 100644
 +CONFIG_FEATURE_FRAME_INJECTION_SUPPORT=y
 diff --git a/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig b/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig
 index 77b854c09e..1547d41a81 100644
+diff --git a/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig b/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig
+index cb74e17..f79cdd3 100644
 --- a/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig
 +++ b/qcom/opensource/wlan/qcacld-3.0/configs/default_defconfig
-@@ -1298,6 +1298,7 @@ CONFIG_WLAN_SPECTRAL_ENABLE := y
+@@ -1294,6 +1294,7 @@ CONFIG_WLAN_SPECTRAL_ENABLE := y
  CONFIG_WMI_CMD_STRINGS := y
  
  CONFIG_FEATURE_MONITOR_MODE_SUPPORT := y
 +CONFIG_FEATURE_FRAME_INJECTION_SUPPORT := y
-+
+ 
  CONFIG_WLAN_ALLOCATE_GLOBAL_BUFFERS_DYNAMICALLY := n
  CONFIG_WLAN_FEATURE_TWT := y
 diff --git a/qcom/opensource/wlan/qcacld-3.0/core/dp/txrx/ol_tx_desc.c b/qcom/opensource/wlan/qcacld-3.0/core/dp/txrx/ol_tx_desc.c
