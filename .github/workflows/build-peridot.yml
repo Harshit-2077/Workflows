@@ -1,15 +1,13 @@
 name: Poco F6 Clang 19 kernel and WLAN
 
 on:
-  workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/build-peridot.yml'
-      - 'scripts/build-peridot.sh'
-      - 'patches/**'
-      - 'README.md'
+
 permissions:
-  contents: write
+  contents: read
+
+defaults:
+  run:
+    shell: bash
 
 concurrency:
   group: peridot-${{ github.ref }}
