@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Poco F6 / Peridot yay
+# Poco F6 / Peridot
 # Kernel and QCA6750 WLAN build using LLVM 19.
 # Requires the existing kernel and WLAN patch files.
 
