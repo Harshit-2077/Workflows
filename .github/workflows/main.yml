@@ -1,0 +1,331 @@
+name: Build kernel + qca_cld3_qca6750.ko (sm8635 / peridot) - Patched
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_branch:
+        description: "Kernel branch"
+        default: "lineage-23.2"
+      modules_branch:
+        description: "Modules branch (from patched fork)"
+        default: "lineage-23.2"
+      clang_version:
+        description: "Neutron clang release tag (blank = latest)"
+        default: ""
+      kernel_configs:
+        description: "Space-separated make config targets. Blank = auto"
+        default: ""
+      wlan_profile:
+        description: "qcacld config profile (configs/<profile>_defconfig)"
+        default: "pineapple_gki_qca6750"
+      modname:
+        description: "Wi-Fi module name"
+        default: "qca_cld3_qca6750"
+      board_platform:
+        description: "BOARD_PLATFORM passed to qcacld Kbuild"
+        default: "pineapple"
+  push:
+    paths:
+      - ".github/workflows/build-kernel.yml"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      KERNEL_REPO: https://github.com/LineageOS/android_kernel_xiaomi_sm8635
+      # CHANGED: Use the pre-patched modules repository
+      MODULES_REPO: https://github.com/Raju-yeager/android_kernel_xiaomi_sm8635-modules
+      KERNEL_BRANCH: ${{ inputs.kernel_branch || 'lineage-23.2' }}
+      MODULES_BRANCH: ${{ inputs.modules_branch || 'lineage-23.2' }}
+      CLANG_VERSION: ${{ inputs.clang_version || '' }}
+      KERNEL_CONFIGS: ${{ inputs.kernel_configs || '' }}
+      WLAN_PROFILE: ${{ inputs.wlan_profile || 'pineapple_gki_qca6750' }}
+      MODNAME: ${{ inputs.modname || 'qca_cld3_qca6750' }}
+      BOARD_PLATFORM: ${{ inputs.board_platform || 'pineapple' }}
+      WORK: ${{ github.workspace }}/work
+      KERNEL_DIR: ${{ github.workspace }}/work/kernel
+      MODULES_DIR: ${{ github.workspace }}/work/modules
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 4G
+      CCACHE_BASEDIR: ${{ github.workspace }}
+
+    steps:
+      - name: Checkout (workflow only)
+        uses: actions/checkout@v4
+
+      - name: Free disk space (background)
+        run: |
+          nohup sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL >/dev/null 2>&1 &
+          df -h /
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -o Acquire::Languages=none
+          sudo apt-get install -y --no-install-recommends \
+            bc bison flex build-essential libssl-dev libelf-dev dwarves cpio lz4 zstd \
+            kmod rsync python3 ccache git patch curl \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+
+      - name: Download Neutron-Clang
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK/toolchain"
+
+          if [[ -n "${CLANG_VERSION:-}" ]]; then
+            API="https://api.github.com/repos/Neutron-Toolchains/clang-build-catalogue/releases/tags/${CLANG_VERSION}"
+          else
+            API="https://api.github.com/repos/Neutron-Toolchains/clang-build-catalogue/releases/latest"
+          fi
+
+          ASSET_URL=$(curl -sSL -H "Accept: application/vnd.github+json" "$API" \
+            | grep -oE '"browser_download_url": *"[^"]+\.tar\.zst"' \
+            | grep -i x86_64 | head -n1 \
+            | sed -E 's/.*"browser_download_url": *"([^"]+)"/\1/')
+
+          if [[ -z "$ASSET_URL" ]]; then
+            echo "::error::Could not resolve a Neutron clang release asset"
+            exit 1
+          fi
+
+          wget -q --show-progress "$ASSET_URL" -O "$WORK/toolchain/neutron.tar.zst"
+          zstd -d --quiet "$WORK/toolchain/neutron.tar.zst" -o "$WORK/toolchain/neutron.tar"
+          tar -xf "$WORK/toolchain/neutron.tar" -C "$WORK/toolchain"
+          rm -f "$WORK/toolchain/neutron.tar.zst" "$WORK/toolchain/neutron.tar"
+
+          CLANG_BIN="$(dirname "$(find "$WORK/toolchain" -maxdepth 5 -name clang -print -quit)")"
+          if [[ -z "$CLANG_BIN" || ! -e "$CLANG_BIN/clang" ]]; then
+            echo "::error::Neutron clang binary not found after extraction"
+            exit 1
+          fi
+          echo "Neutron clang bin: $CLANG_BIN"
+          echo "$CLANG_BIN" >> "$GITHUB_PATH"
+
+      - name: Show toolchain
+        run: |
+          clang --version
+          ld.lld --version
+          llvm-nm --version
+          command -v clang ld.lld llvm-nm llvm-strip llvm-ar
+
+          CLANG_PATH="$(command -v clang)"
+          case "$CLANG_PATH" in
+            "$WORK/toolchain/"*) ;;
+            *)
+              echo "::error::clang resolves to $CLANG_PATH, not the Neutron toolchain under $WORK/toolchain"
+              exit 1
+              ;;
+          esac
+          echo "clang from Neutron toolchain: $CLANG_PATH"
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ env.KERNEL_BRANCH }}-${{ env.CLANG_VERSION || 'neutron-latest' }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ env.KERNEL_BRANCH }}-${{ env.CLANG_VERSION || 'neutron-latest' }}-
+            ccache-${{ env.KERNEL_BRANCH }}-
+
+      - name: Clone kernel and patched modules
+        run: |
+          mkdir -p "$WORK" "$WORK/dist" "$WORK/logs"
+          git clone --depth=1 --branch "$KERNEL_BRANCH"  "$KERNEL_REPO"  "$KERNEL_DIR"
+          # CHANGED: Clone the pre-patched fork directly
+          git clone --depth=1 --branch "$MODULES_BRANCH" "$MODULES_REPO" "$MODULES_DIR"
+
+      # REMOVED: "Apply patches" step is no longer needed.
+
+      - name: Fix OpenSSL 3.0 undeclared 'key_pass' on Ubuntu 24.04 runners
+        run: |
+          ROOT="$KERNEL_DIR"
+          if [[ -f "$ROOT/certs/extract-cert.c" ]]; then
+            sed -i '/static.*key_pass/d' "$ROOT/certs/extract-cert.c"
+            sed -i '1i __attribute__((unused)) static const char *key_pass;' "$ROOT/certs/extract-cert.c"
+          fi
+
+      - name: Create make wrapper
+        run: |
+          cat > "$WORK/kmake" <<'EOF'
+          #!/usr/bin/env bash
+          exec make -j"$(nproc)" -C "$KERNEL_DIR" O="$KERNEL_DIR/out" \
+            ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+            CC="ccache clang" HOSTCC="ccache clang" \
+            CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
+            KCFLAGS="-Wno-error" "$@"
+          EOF
+          chmod +x "$WORK/kmake"
+
+      - name: Configure kernel (gki + pineapple + peridot), module signing off
+        run: |
+          cd "$KERNEL_DIR"
+          CFG=arch/arm64/configs
+
+          resolve() {
+            local n="$1" c
+            for c in "vendor/${n}_GKI.config" "${n}_GKI.config" \
+                     "vendor/${n}.config" "${n}.config" \
+                     "vendor/${n}_GKI_defconfig" "vendor/${n}_defconfig" "${n}_defconfig"; do
+              if [[ -f "$CFG/$c" ]]; then echo "$c"; return 0; fi
+            done
+            return 1
+          }
+
+          if [[ -n "$KERNEL_CONFIGS" ]]; then
+            TARGETS="$KERNEL_CONFIGS"
+          else
+            PINE="$(resolve pineapple || true)"
+            PERI="$(resolve peridot || true)"
+            if [[ -z "$PINE" || -z "$PERI" ]]; then
+              echo "::error::Could not auto-detect pineapple/peridot configs (got pineapple='$PINE' peridot='$PERI'). Re-run with the kernel_configs input."
+              exit 1
+            fi
+            if [[ -f "$CFG/gki_defconfig" ]]; then
+              TARGETS="gki_defconfig $PINE $PERI"
+            else
+              TARGETS="$PINE $PERI"
+            fi
+          fi
+          echo "Using config targets: $TARGETS"
+          echo "$TARGETS" > "$WORK/config_targets.txt"
+
+          "$WORK/kmake" $TARGETS
+
+          ./scripts/config --file out/.config \
+            -e MODULES \
+            -d MODULE_SIG -d MODULE_SIG_ALL -d MODULE_SIG_FORCE -d MODULE_SIG_PROTECT \
+            -d LTO_NONE \
+            -d LTO_CLANG_FULL \
+            -e LTO \
+            -e LTO_CLANG \
+            -e LTO_CLANG_THIN \
+            -e CFI_CLANG \
+            --set-str MODULE_SIG_KEY "" \
+            --set-str SYSTEM_TRUSTED_KEYS "" \
+            --set-str SYSTEM_REVOCATION_KEYS ""
+          "$WORK/kmake" olddefconfig
+
+          echo "---- module-signing state ----"
+          grep -E '^(# )?CONFIG_MODULES( |=)|^(# )?CONFIG_MODULE_SIG[A-Z_]*( |=)' out/.config || true
+          if grep -q '^CONFIG_MODULE_SIG=y' out/.config; then
+            echo "::error::CONFIG_MODULE_SIG is still enabled after olddefconfig"
+            exit 1
+          fi
+
+      - name: Build kernel (Image, Image.gz) + module prep
+        run: |
+          "$WORK/kmake" Image Image.gz modules_prepare modules \
+              2>&1 | tee "$WORK/logs/kernel-build.log"
+
+          test -f "$KERNEL_DIR/out/scripts/module.lds" || { echo "::error::module.lds not generated"; exit 1; }
+          test -f "$KERNEL_DIR/out/Module.symvers"     || { echo "::error::Module.symvers not generated"; exit 1; }
+
+          ls -lh "$KERNEL_DIR"/out/arch/arm64/boot/Image*
+          ccache -s || true
+
+      - name: Show patched Wi-Fi driver build knobs (for debugging)
+        run: |
+          WLAN="$MODULES_DIR/qcom/opensource/wlan"
+          echo "== profile defconfig =="
+          ls -l "$WLAN/qcacld-3.0/configs/${WLAN_PROFILE}_defconfig"
+          grep -n "FRAME_INJECTION\|CNSS_QCA6750" "$WLAN/qcacld-3.0/configs/${WLAN_PROFILE}_defconfig" \
+            "$WLAN/qcacld-3.0/configs/default_defconfig" "$WLAN/qcacld-3.0/configs/qca6750_defconfig" || true
+          echo "== cnss headers found =="
+          find "$WLAN" \( -name cnss2.h -o -name cnss_utils.h -o -name cnss_prealloc.h \) | sort
+
+      - name: Build ${{ env.MODNAME }}.ko against this kernel
+        run: |
+          WLAN="$MODULES_DIR/qcom/opensource/wlan"
+          QCACLD="$WLAN/qcacld-3.0"
+
+          INC=""
+          for d in $(find "$WLAN" \( -name cnss2.h -o -name cnss_utils.h -o -name cnss_prealloc.h \) -printf '%h\n' | sort -u); do
+            INC="$INC -I$d"
+          done
+          echo "Extra include flags:$INC"
+
+          "$WORK/kmake" M="$QCACLD" \
+            WLAN_ROOT="$QCACLD" \
+            WLAN_COMMON_ROOT=../qca-wifi-host-cmn \
+            WLAN_COMMON_INC="$WLAN/qca-wifi-host-cmn" \
+            WLAN_FW_API="$WLAN/fw-api" \
+            WLAN_FW_INC="$WLAN/fw-api" \
+            WLAN_PROFILE="$WLAN_PROFILE" \
+            CONFIG_QCA_CLD_WLAN_PROFILE="$WLAN_PROFILE" \
+            MODNAME="$MODNAME" \
+            BOARD_PLATFORM="$BOARD_PLATFORM" \
+            CONFIG_QCA_CLD_WLAN=m \
+            KBUILD_MODPOST_WARN=1 \
+            KCPPFLAGS="$INC" \
+            modules 2>&1 | tee "$WORK/logs/module-build.log"
+
+          KO="$(find "$QCACLD" -name "$MODNAME.ko" | head -1)"
+          if [[ -z "$KO" ]]; then
+            echo "::error::$MODNAME.ko was not produced"
+            exit 1
+          fi
+          echo "KO=$KO" >> "$GITHUB_ENV"
+
+      - name: Verify module (patch compiled in, unsigned, vermagic matches kernel)
+        run: |
+          echo "== modinfo =="
+          modinfo "$KO" | grep -E '^(name|vermagic|sig_id|signer):' || true
+          SIG="$(modinfo -F sig_id "$KO" || true)"
+          if [[ -n "$SIG" ]]; then
+            echo "::error::module is signed"; exit 1
+          fi
+
+          echo "== injection symbols =="
+          COUNT="$(llvm-nm "$KO" | grep -c 'wma_injection' || true)"
+          echo "wma_injection symbols: $COUNT"
+          if [[ "$COUNT" -eq 0 ]]; then
+            echo "::error::FEATURE_FRAME_INJECTION_SUPPORT code is NOT in the module (patch/profile not picked up)"
+            exit 1
+          fi
+
+          REL="$(cat "$KERNEL_DIR/out/include/config/kernel.release")"
+          echo "kernel.release: $REL"
+          VM="$(modinfo -F vermagic "$KO")"
+          echo "vermagic: $VM"
+          [[ "$VM" == "$REL "* ]] || { echo "::error::vermagic does not match kernel.release"; exit 1; }
+
+      - name: Collect artifacts
+        run: |
+          D="$WORK/dist"
+          cp "$KERNEL_DIR"/out/arch/arm64/boot/Image "$KERNEL_DIR"/out/arch/arm64/boot/Image.gz "$D/"
+          cp "$KO" "$D/$MODNAME.ko"
+          llvm-strip --strip-debug "$D/$MODNAME.ko"
+          cp "$KERNEL_DIR/out/.config" "$D/kernel.config"
+          cp "$KERNEL_DIR/out/include/config/kernel.release" "$D/kernel.release"
+          cp "$WORK/config_targets.txt" "$D/"
+          ls -lh "$D"
+          {
+            echo "### Build OK"
+            echo "- kernel.release: \`$(cat "$D/kernel.release")\`"
+            echo "- config targets: \`$(cat "$WORK/config_targets.txt")\`"
+            echo "- module: \`$MODNAME.ko\` ($(du -h "$D/$MODNAME.ko" | cut -f1))"
+            echo
+            echo "Flash the Image **and** use the .ko from the same run: vermagic / symbol CRCs are tied to this exact kernel build."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sm8635-kernel-and-wlan
+          path: work/dist/*
+          if-no-files-found: error
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: work/logs/*
+          if-no-files-found: ignore
